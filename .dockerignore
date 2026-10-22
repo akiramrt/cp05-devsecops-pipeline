@@ -1,0 +1,6 @@
+# Só o site e a config do nginx entram na imagem
+*
+!site/
+!nginx/default.conf
+# ...e nunca arquivos ocultos que escaparem para dentro de site/ (.env, .DS_Store)
+site/**/.*

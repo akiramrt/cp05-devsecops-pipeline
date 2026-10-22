@@ -1,0 +1,191 @@
+name: Security Pipeline
+
+# Roda em todo push (qualquer branch) e em todo pull request, como pede o CP05.
+on: [push, pull_request]
+
+# Menor privilégio por padrão: cada job pede só a permissão extra de que precisa.
+permissions:
+  contents: read
+
+# Um push novo no mesmo PR cancela a execução anterior desse PR.
+# Cada push tem o próprio grupo (run_id), então execuções de push nunca se cancelam.
+concurrency:
+  group: security-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('push-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Todas as actions de terceiros estão fixadas por SHA completo do commit (não por tag).
+# Motivo: em março/2026 as tags do aquasecurity/trivy-action foram reescritas por um
+# atacante (GHSA-69fq-xp46-6x23). Um SHA não pode ser trocado por baixo do pipeline.
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Barreira 1: SEGREDOS. O Gitleaks varre os commits enviados no push / no PR
+  # procurando chaves de API, tokens, chaves privadas e senhas de alta entropia.
+  # ---------------------------------------------------------------------------
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write # o gitleaks comenta no PR, na linha do segredo
+    steps:
+      - name: Checkout (histórico completo, o gitleaks lê os commits)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # A gitleaks-action monta o intervalo "<primeiro>^..<último>" dos commits do push.
+      # Se o primeiro commit for a raiz do repositório, "<raiz>^" não existe: o gitleaks
+      # varre 0 commits e o job passaria VERDE sem verificar nada. Aqui ele falha fechado.
+      - name: Guarda - o gitleaks não pode varrer 0 commits
+        if: github.event_name == 'push'
+        run: |
+          read -r total first <<< "$(python3 -c 'import json, os; c = json.load(open(os.environ["GITHUB_EVENT_PATH"])).get("commits") or []; print(len(c), c[0]["id"] if c else "-")')"
+          echo "Commits neste push: $total (primeiro: $first)"
+          if [ "$total" -gt 1 ] && ! git rev-parse --verify --quiet "${first}^" > /dev/null; then
+            echo "::error title=gitleaks::O push começa no commit raiz ${first}; o gitleaks varreria 0 commits. Envie os commits em partes."
+            exit 1
+          fi
+
+      - name: Gitleaks - procura segredos nos commits
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: "8.30.1" # a versão padrão da action (8.24.3) tem a CVE-2026-63728
+          GITLEAKS_ENABLE_SUMMARY: "true"
+          GITLEAKS_ENABLE_COMMENTS: "true"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+
+      - name: Anotar segredos encontrados
+        if: failure()
+        run: python3 .github/scripts/sarif_report.py results.sarif --tool Gitleaks
+
+  # ---------------------------------------------------------------------------
+  # Barreira 2: CÓDIGO VULNERÁVEL. O Semgrep faz análise estática (SAST) com as
+  # regras da comunidade (p/default) + a regra própria .semgrep/no-eval.yml.
+  # --error faz o job falhar se houver qualquer achado.
+  # ---------------------------------------------------------------------------
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # envio do SARIF para a aba Security > Code scanning
+    container:
+      image: semgrep/semgrep:1.181.1@sha256:3db5c7af55eb1f512eac0abf0ab69a97b52c74b5e9a27314c221aee1a78d7ab2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # O container roda como root e o workspace pertence ao usuário do runner
+      - name: Git safe.directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Semgrep - análise estática (SAST)
+        run: |
+          semgrep scan \
+            --config p/default \
+            --config .semgrep/ \
+            --metrics=off \
+            --error \
+            --sarif-output=semgrep.sarif
+
+      - name: Anotar achados do Semgrep
+        if: ${{ !cancelled() }}
+        run: python3 .github/scripts/sarif_report.py semgrep.sarif --tool Semgrep
+
+      - name: Enviar SARIF para o Code Scanning
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # ---------------------------------------------------------------------------
+  # Barreira 3: IMAGEM COM CVE CRÍTICO. Constrói a imagem do Dockerfile e o Trivy
+  # escaneia SO e bibliotecas. Falha só com CVE CRITICAL que já tem correção.
+  # ---------------------------------------------------------------------------
+  trivy:
+    name: trivy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      IMAGE: arcanjosa-site:${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Docker build da imagem do site
+        id: build
+        run: docker build --pull --tag "$IMAGE" .
+
+      - name: Trivy - barra CVE CRITICAL com correção disponível
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_IMAGE_SRC: docker
+        with:
+          version: v0.76.1
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln
+          vuln-type: os,library
+          severity: CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
+
+      # Só roda se a imagem passou no Trivy: prova que o container sobe e serve o site.
+      - name: Smoke test do container (nginx -t, /healthz, headers)
+        run: |
+          docker run --rm "$IMAGE" nginx -t
+          docker run -d --name site --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges -p 8080:8080 "$IMAGE"
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8080/healthz
+          curl -fsSI http://127.0.0.1:8080/ | tee headers.txt
+          grep -qi '^content-security-policy:' headers.txt
+          grep -qi '^x-frame-options: deny' headers.txt
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/.git/config)" = 403
+          docker exec site id -u | grep -qx 101
+          docker rm -f site
+
+      - name: Trivy - relatório SARIF (todas as severidades com correção)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_IMAGE_SRC: docker
+          TRIVY_SKIP_DB_UPDATE: "true"
+          TRIVY_SKIP_JAVA_DB_UPDATE: "true"
+        with:
+          skip-setup-trivy: true
+          cache: "false" # reaproveita o banco que o passo anterior acabou de baixar
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "0"
+
+      - name: Anotar CVEs críticos
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          from_line="$(grep -n -m1 '^FROM' Dockerfile | cut -d: -f1)"
+          python3 .github/scripts/sarif_report.py trivy-results.sarif --tool Trivy --only-tag CRITICAL --anchor "Dockerfile:${from_line:-1}"
+
+      - name: Enviar SARIF para o Code Scanning
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Escudo Arcanjosa">
+  <path d="M32 4 8 13v17c0 15.5 10.2 26.6 24 30 13.8-3.4 24-14.5 24-30V13L32 4Z" fill="#35d39a"/>
+  <path d="M32 10 14 17v13c0 12.2 7.6 21.2 18 24.2 10.4-3 18-12 18-24.2V17L32 10Z" fill="#0b1220"/>
+  <path d="m23 32 6.5 6.5L42 26" fill="none" stroke="#35d39a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,24 @@
+rules:
+  - id: cp05-no-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Execução dinâmica de código detectada (eval / new Function / timer com string).
+      Se o texto avaliado vier do usuário, o atacante executa JavaScript arbitrário
+      no navegador da vítima (injeção de código / XSS). Faça o parsing explícito da entrada.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: window.eval(...)
+      - pattern: globalThis.eval(...)
+      - pattern: new Function(...)
+      - pattern: Function(...)
+      - pattern: setTimeout("...", ...)
+      - pattern: setInterval("...", ...)
+    metadata:
+      category: security
+      cwe:
+        - "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
+      owasp:
+        - "A03:2021 - Injection"
+      references:
+        - https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_direct_eval!

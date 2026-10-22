@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arcanjosa · Pipeline DevSecOps de Referência</title>
+  <meta name="description" content="Pipeline de segurança de referência da Arcanjosa: Gitleaks, Semgrep e Trivy barrando segredos, código vulnerável e imagens com CVE crítico.">
+  <meta name="author" content="Eduardo Akira Murata - RM 98713">
+  <link rel="icon" href="img/shield.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar__inner">
+      <a class="brand" href="#inicio" aria-label="Arcanjosa Security Gate - início">
+        <img src="img/shield.svg" alt="" width="28" height="28">
+        <span>Arcanjosa<small>Security Gate</small></span>
+      </a>
+      <nav class="nav" aria-label="Seções">
+        <a href="#incidente">Incidente</a>
+        <a href="#pipeline">Pipeline</a>
+        <a href="#provas">Provas</a>
+        <a href="#autor">Autor</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="inicio">
+    <section class="hero">
+      <div class="wrap hero__grid">
+        <div>
+          <p class="eyebrow">CP05 · DevSecOps &amp; Cloud Computing</p>
+          <h1>Nenhum commit chega em produção sem passar pelos três guardas.</h1>
+          <p class="lead">
+            Depois que uma chave de API vazou num commit público, a diretoria da Arcanjosa decretou:
+            todo repositório precisa de um pipeline de segurança. Este é o pipeline de referência:
+            ele barra <strong>segredos</strong>, <strong>código vulnerável</strong> e
+            <strong>imagens com CVE crítico</strong> — e prova que barra.
+          </p>
+          <div class="hero__cta">
+            <a class="btn btn--primary" href="#pipeline">Ver o pipeline</a>
+            <a class="btn btn--ghost" href="#provas">Ver as provas de sabotagem</a>
+          </div>
+        </div>
+        <aside class="status-card" aria-labelledby="status-title">
+          <h2 id="status-title">Status do gate</h2>
+          <ul class="status-list" id="status-list">
+            <li data-tool="gitleaks"><span class="dot dot--ok" aria-hidden="true"></span>Gitleaks <em>segredos</em></li>
+            <li data-tool="semgrep"><span class="dot dot--ok" aria-hidden="true"></span>Semgrep <em>SAST</em></li>
+            <li data-tool="trivy"><span class="dot dot--ok" aria-hidden="true"></span>Trivy <em>CVE da imagem</em></li>
+          </ul>
+          <p class="status-card__foot">Gatilhos: <code>push</code> e <code>pull_request</code></p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="incidente" class="section">
+      <div class="wrap">
+        <h2 class="section__title">O incidente</h2>
+        <div class="incident">
+          <div class="incident__item">
+            <span class="incident__num">1</span>
+            <p>Uma chave de API foi commitada num repositório público. Robôs varrem o GitHub o tempo todo: em minutos uma credencial exposta já está sendo testada.</p>
+          </div>
+          <div class="incident__item">
+            <span class="incident__num">2</span>
+            <p>Apagar o arquivo depois não resolve: o segredo continua no histórico do Git. A única saída é revogar a chave e impedir que o próximo vazamento aconteça.</p>
+          </div>
+          <div class="incident__item">
+            <span class="incident__num">3</span>
+            <p>Decisão da diretoria: pipeline de segurança obrigatório, rodando em todo <code>push</code> e todo <code>pull_request</code>, bloqueando o merge quando algo falha.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pipeline" class="section section--alt">
+      <div class="wrap">
+        <h2 class="section__title">O pipeline <code>security.yml</code></h2>
+        <p class="section__lead">Clique em cada guarda para ver o que ele procura e por que isso é perigoso.</p>
+        <ol class="stages" id="stages">
+          <li><button type="button" class="stage" aria-controls="stage-detail" data-stage="commit" aria-pressed="false"><span class="stage__icon" aria-hidden="true">📝</span>Commit / PR</button></li>
+          <li><button type="button" class="stage" aria-controls="stage-detail" data-stage="gitleaks" aria-pressed="true"><span class="stage__icon" aria-hidden="true">🔑</span>Gitleaks</button></li>
+          <li><button type="button" class="stage" aria-controls="stage-detail" data-stage="semgrep" aria-pressed="false"><span class="stage__icon" aria-hidden="true">🔍</span>Semgrep</button></li>
+          <li><button type="button" class="stage" aria-controls="stage-detail" data-stage="trivy" aria-pressed="false"><span class="stage__icon" aria-hidden="true">🐳</span>Docker + Trivy</button></li>
+          <li><button type="button" class="stage" aria-controls="stage-detail" data-stage="merge" aria-pressed="false"><span class="stage__icon" aria-hidden="true">✅</span>Merge liberado</button></li>
+        </ol>
+        <article class="stage-detail" id="stage-detail" aria-live="polite" aria-atomic="true">
+          <h3 id="stage-detail-title">Gitleaks — segredos no histórico</h3>
+          <p id="stage-detail-what">O que faz: Varre os commits enviados procurando padrões de credenciais: chaves de API, tokens, chaves privadas, senhas com alta entropia.</p>
+          <p id="stage-detail-why">Por que importa: Um segredo commitado fica para sempre no histórico do Git e é coletado por robôs em minutos. Barrar antes do merge é muito mais barato do que revogar e investigar depois.</p>
+          <p class="stage-detail__fail" id="stage-detail-fail">Prova 1: um commit com uma chave de API falsa faz o job gitleaks falhar.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="provas" class="section">
+      <div class="wrap">
+        <h2 class="section__title">As provas de sabotagem</h2>
+        <p class="section__lead">Não basta montar o pipeline: cada guarda foi sabotado de propósito, num branch separado, para provar que ele barra o problema.</p>
+        <div class="proofs">
+          <article class="proof">
+            <p class="proof__tag proof__tag--fail">Prova 1 · barrado</p>
+            <h3>Segredo falso → Gitleaks</h3>
+            <p>Um commit adiciona uma chave de API falsa num arquivo de configuração. O job <code>gitleaks</code> encontra o segredo no histórico e falha, bloqueando o merge do PR.</p>
+            <p class="proof__branch">branch <code>sabotagem/01-gitleaks-segredo-falso</code></p>
+          </article>
+          <article class="proof">
+            <p class="proof__tag proof__tag--fail">Prova 2 · apontado</p>
+            <h3><code>eval()</code> → Semgrep</h3>
+            <p>Uma “calculadora” passa a avaliar o texto digitado pelo usuário com <code>eval()</code>. O job <code>semgrep</code> aponta o arquivo e a linha e falha.</p>
+            <p class="proof__branch">branch <code>sabotagem/02-semgrep-eval</code></p>
+          </article>
+          <article class="proof">
+            <p class="proof__tag proof__tag--ok">Prova 3 · imagem limpa</p>
+            <h3>Imagem do site → Trivy</h3>
+            <p>A imagem Docker do site é construída no pipeline e escaneada pelo Trivy, que só deixa passar se não houver CVE <strong>CRITICAL</strong> com correção disponível.</p>
+            <p class="proof__branch">branch <code>main</code> · bônus: <code>sabotagem/03-trivy-imagem-vulneravel</code></p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="autor" class="section section--alt">
+      <div class="wrap author">
+        <div>
+          <h2 class="section__title">Autor</h2>
+          <p class="author__name">Eduardo Akira Murata</p>
+          <p class="author__meta">RM 98713 · 4ESR · FIAP Engenharia de Software</p>
+          <p class="author__meta">Checkpoint 05 — DevSecOps and Cloud Computing</p>
+        </div>
+        <dl class="build-info" id="build-info">
+          <div><dt>Servidor</dt><dd>nginx (usuário não-root, porta 8080)</dd></div>
+          <div><dt>Página carregada em</dt><dd id="loaded-at">—</dd></div>
+        </dl>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <p>Arcanjosa é uma empresa fictícia criada para o CP05. Todos os segredos usados nas provas são falsos.</p>
+    </div>
+  </footer>
+
+  <script src="js/app.js" defer></script>
+</body>
+</html>
