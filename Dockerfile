@@ -1,7 +1,7 @@
-# Imagem base: nginx oficial "unprivileged" (roda como usuário não-root na porta 8080),
-# variante alpine-slim (menos pacotes = menos superfície de ataque e menos CVEs).
-# Fixada por versão + digest: o build é reproduzível e uma tag republicada não muda a imagem.
-FROM nginx/nginx-unprivileged:1.31.8-alpine-slim@sha256:a2ae214d0266826427b804b0513dce20c9c93b862f1593203f9e6b50be9c2689
+# SABOTAGEM CP05 (Prova 3 - bônus): "volta" para uma imagem base antiga, nginx 1.16
+# sobre Alpine 3.10 (fim de suporte em 2021), que tem CVEs CRITICAL com correção.
+# O job trivy precisa barrar esta imagem.
+FROM nginx:1.16-alpine@sha256:5057451e461dda671da5e951019ddbff9d96a751fc7d548053523ca1f848c1ad
 
 LABEL org.opencontainers.image.title="arcanjosa-site" \
       org.opencontainers.image.description="Site da Arcanjosa - CP05 DevSecOps (FIAP)" \
