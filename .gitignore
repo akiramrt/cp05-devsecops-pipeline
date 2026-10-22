@@ -1,0 +1,15 @@
+# Relatórios gerados localmente
+*.sarif
+semgrep-results.json
+trivy-results.*
+.trivycache/
+
+# Ambiente
+.env
+.env.*
+!.env.example
+node_modules/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
