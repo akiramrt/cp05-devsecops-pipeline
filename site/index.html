@@ -121,6 +121,19 @@
       </div>
     </section>
 
+    <section id="calculadora" class="section">
+      <div class="wrap">
+        <h2 class="section__title">Calculadora rápida</h2>
+        <p class="section__lead">Digite uma conta para calcular o custo estimado de um incidente.</p>
+        <form id="calc-form" class="calc">
+          <label for="calc-input">Expressão</label>
+          <input id="calc-input" name="expressao" type="text" placeholder="2 * 21" autocomplete="off">
+          <button type="submit" class="btn btn--primary">Calcular</button>
+          <output id="calc-output" for="calc-input">—</output>
+        </form>
+      </div>
+    </section>
+
     <section id="autor" class="section section--alt">
       <div class="wrap author">
         <div>
@@ -144,5 +157,6 @@
   </footer>
 
   <script src="js/app.js" defer></script>
+  <script src="js/calculadora.js" defer></script>
 </body>
 </html>
